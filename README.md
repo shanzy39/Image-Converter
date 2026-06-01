@@ -6,11 +6,12 @@ A free, client-side web tool to **convert, resize, and compress images** — rig
 
 ## Features
 
-- **Convert between formats** — PNG, JPG, WebP, and **SVG** (vector tracing)
+- **Convert between formats** — PNG, JPG, WebP, **SVG** (vector tracing), and **PDF**
 - **Raster → SVG vectorizing** — trace an image into real vector shapes, with a **detail (colors)** control; great for logos, icons, and line art
+- **Image → PDF** — wrap the resized image in a single-page PDF, sized to match
 - **Drag & drop or browse** — also accepts GIF, BMP, and SVG as input
 - **Resize** — set a target width/height, with optional **lock aspect ratio**
-- **Quality / compression slider** — dial in file size for JPG &amp; WebP, with a live size estimate
+- **Quality / compression slider** — dial in file size for JPG, WebP &amp; PDF, with a live size estimate
 - **Live preview** — see the result (on a transparency checkerboard) before you download
 - **Size readout** — shows the estimated output size and how much smaller/larger it is than the source
 - **Privacy by default** — re-encoding strips **EXIF/GPS metadata** from the exported image
@@ -19,7 +20,7 @@ A free, client-side web tool to **convert, resize, and compress images** — rig
 ## How it works
 
 1. The chosen image is loaded into an in-memory `Image`
-2. It's drawn onto a `<canvas>` at your target dimensions (high-quality smoothing; JPG gets a white matte so transparent areas don't turn black)
+2. It's drawn onto a `<canvas>` at your target dimensions (high-quality smoothing; JPG — and the JPEG inside a PDF — gets a white matte so transparent areas don't turn black)
 3. `canvas.toBlob()` re-encodes it to your selected format and quality
 4. The resulting blob is previewed and offered as a download — and because it's a fresh re-encode, embedded metadata (camera info, GPS, timestamps) is dropped
 
@@ -29,6 +30,7 @@ A free, client-side web tool to **convert, resize, and compress images** — rig
 - **WebP export** depends on browser support; if your browser can't encode WebP, that option is disabled automatically.
 - Converting a transparent PNG to **JPG** fills the background with white (JPEG has no transparency).
 - **SVG output is vector tracing**, not a pixel-perfect copy. It shines on flat-color graphics (logos, icons, line art) and is not meant for photographs — tracing a photo produces a large, blotchy file. Use the **detail (colors)** slider to balance fidelity against file size, and resize first to control how finely the image is traced.
+- **PDF output** embeds the image as a JPEG on a single page sized to match it (1px = 1pt), so the **quality slider** applies and transparency is flattened to white. The PDF is assembled by hand in the browser — no library, still fully offline.
 
 ## Run locally
 

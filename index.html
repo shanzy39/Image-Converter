@@ -229,6 +229,7 @@
           <button data-fmt="image/jpeg" aria-pressed="false">JPG</button>
           <button data-fmt="image/webp" aria-pressed="false">WebP</button>
           <button data-fmt="image/svg+xml" aria-pressed="false">SVG</button>
+          <button data-fmt="application/pdf" aria-pressed="false">PDF</button>
         </div>
       </div>
 
@@ -257,7 +258,7 @@
           <span class="val" id="qualityVal">90%</span>
         </div>
         <input type="range" id="qualityInput" min="10" max="100" value="90" step="1">
-        <div class="note" id="qualityNote">Lower quality = smaller file. Applies to JPG &amp; WebP.</div>
+        <div class="note" id="qualityNote">Lower quality = smaller file. Applies to JPG, WebP &amp; PDF.</div>
       </div>
 
       <div class="field" id="svgField" style="display:none">
@@ -334,7 +335,7 @@
   };
   let renderTimer = null;
 
-  const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg" };
+  const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg", "application/pdf": "pdf" };
 
   // ---- Feature-detect WebP encoding; disable the button if unsupported ----
   (function detectWebp() {
@@ -359,10 +360,15 @@
 
   function isLossy() { return state.format === "image/jpeg" || state.format === "image/webp"; }
   function isSvg()   { return state.format === "image/svg+xml"; }
+  function isPdf()   { return state.format === "application/pdf"; }
+  // PDF embeds a JPEG, so the quality slider applies to it too.
+  function usesQuality()    { return isLossy() || isPdf(); }
+  // JPEG (and the JPEG inside a PDF) can't store transparency.
+  function needsWhiteMatte() { return state.format === "image/jpeg" || isPdf(); }
 
   function syncControls() {
-    qualityField.style.display = isLossy() ? "" : "none";
-    svgField.style.display     = isSvg()   ? "" : "none";
+    qualityField.style.display = usesQuality() ? "" : "none";
+    svgField.style.display     = isSvg()       ? "" : "none";
   }
 
   function loadFile(file) {
@@ -406,11 +412,12 @@
     renderTimer = setTimeout(render, 180);
   }
 
-  function showResult(blob, w, h) {
+  function showResult(blob, w, h, previewBlob) {
     if (!blob) { estSize.textContent = "unsupported"; return; }
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.lastBlob = blob;
-    state.previewUrl = URL.createObjectURL(blob);
+    // PDFs can't render in an <img>, so preview the supplied raster instead.
+    state.previewUrl = URL.createObjectURL(previewBlob || blob);
     previewImg.src = state.previewUrl;
 
     estDims.textContent = w + " × " + h + " px";
@@ -441,8 +448,9 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    // JPEG has no alpha — fill white so transparent areas don't turn black.
-    if (state.format === "image/jpeg") {
+    // JPEG (incl. the JPEG embedded in a PDF) has no alpha — fill white
+    // so transparent areas don't turn black.
+    if (needsWhiteMatte()) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, w, h);
     }
@@ -463,7 +471,68 @@
       return;
     }
 
+    // PDF: encode the (matted) canvas as a JPEG and wrap it in a one-page PDF
+    // sized to the image. The preview shows the JPEG the PDF will contain.
+    if (isPdf()) {
+      canvas.toBlob(async (jpegBlob) => {
+        if (!jpegBlob) { estSize.textContent = "unsupported"; return; }
+        const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+        showResult(buildPdf(jpegBytes, w, h), w, h, jpegBlob);
+      }, "image/jpeg", state.quality);
+      return;
+    }
+
     canvas.toBlob((blob) => showResult(blob, w, h), state.format, isLossy() ? state.quality : undefined);
+  }
+
+  // Hand-rolled minimal PDF: one page sized to the image, with the JPEG
+  // embedded directly via the /DCTDecode filter (no re-encoding, no deps).
+  function buildPdf(jpegBytes, w, h) {
+    const enc = new TextEncoder();
+    const chunks = [];
+    let length = 0;
+    const offsets = [];
+    const push = (data) => {
+      const bytes = typeof data === "string" ? enc.encode(data) : data;
+      chunks.push(bytes);
+      length += bytes.length;
+    };
+    const startObj = () => { offsets.push(length); };
+
+    push("%PDF-1.4\n");
+
+    startObj();
+    push("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+    startObj();
+    push("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+
+    startObj();
+    push("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + w + " " + h + "]" +
+         " /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n");
+
+    startObj();
+    push("4 0 obj\n<< /Type /XObject /Subtype /Image /Width " + w + " /Height " + h +
+         " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " +
+         jpegBytes.length + " >>\nstream\n");
+    push(jpegBytes);
+    push("\nendstream\nendobj\n");
+
+    startObj();
+    const content = "q\n" + w + " 0 0 " + h + " 0 0 cm\n/Im0 Do\nQ\n";
+    push("5 0 obj\n<< /Length " + content.length + " >>\nstream\n" + content + "endstream\nendobj\n");
+
+    const xrefStart = length;
+    const size = offsets.length + 1; // + the free object 0
+    let xref = "xref\n0 " + size + "\n0000000000 65535 f \n";
+    for (const off of offsets) xref += String(off).padStart(10, "0") + " 00000 n \n";
+    push(xref);
+    push("trailer\n<< /Size " + size + " /Root 1 0 R >>\nstartxref\n" + xrefStart + "\n%%EOF");
+
+    const out = new Uint8Array(length);
+    let pos = 0;
+    for (const c of chunks) { out.set(c, pos); pos += c.length; }
+    return new Blob([out], { type: "application/pdf" });
   }
 
   // ---- Drop zone events ----
