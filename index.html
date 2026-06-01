@@ -143,8 +143,7 @@
   .quality-head { display: flex; justify-content: space-between; align-items: baseline; }
   .quality-head .val { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
   input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 8px; cursor: pointer; }
-  #qualityField.disabled { opacity: .45; pointer-events: none; }
-  #qualityField .note { font-size: .74rem; color: var(--muted); margin-top: 6px; }
+  .field .note { font-size: .74rem; color: var(--muted); margin-top: 6px; }
 
   .estimate {
     background: var(--bg-accent); border: 1px solid var(--line); border-radius: 12px;
@@ -229,6 +228,7 @@
           <button data-fmt="image/png" aria-pressed="true">PNG</button>
           <button data-fmt="image/jpeg" aria-pressed="false">JPG</button>
           <button data-fmt="image/webp" aria-pressed="false">WebP</button>
+          <button data-fmt="image/svg+xml" aria-pressed="false">SVG</button>
         </div>
       </div>
 
@@ -260,6 +260,15 @@
         <div class="note" id="qualityNote">Lower quality = smaller file. Applies to JPG &amp; WebP.</div>
       </div>
 
+      <div class="field" id="svgField" style="display:none">
+        <div class="quality-head">
+          <label style="margin:0">Detail (colors)</label>
+          <span class="val" id="svgColorsVal">16</span>
+        </div>
+        <input type="range" id="svgColorsInput" min="2" max="64" value="16" step="1">
+        <div class="note">Traces the image into vector shapes. More colors = more detail &amp; a larger file. Works best for logos, icons &amp; line art — not photos.</div>
+      </div>
+
       <div class="estimate">
         <div class="row"><span>Output</span><span id="estDims">—</span></div>
         <div class="row"><span>Estimated size</span><span id="estSize">—</span></div>
@@ -279,6 +288,7 @@
   </footer>
 </div>
 
+<script src="vendor/imagetracer.min.js"></script>
 <script>
 (() => {
   "use strict";
@@ -300,6 +310,9 @@
   const qualityField = document.getElementById("qualityField");
   const qualityInput = document.getElementById("qualityInput");
   const qualityVal = document.getElementById("qualityVal");
+  const svgField   = document.getElementById("svgField");
+  const svgColorsInput = document.getElementById("svgColorsInput");
+  const svgColorsVal = document.getElementById("svgColorsVal");
   const estDims    = document.getElementById("estDims");
   const estSize    = document.getElementById("estSize");
   const estDelta   = document.getElementById("estDelta");
@@ -315,12 +328,13 @@
     origType: "",
     format: "image/png",
     quality: 0.9,
+    colors: 16,
     lastBlob: null,
     previewUrl: null,
   };
   let renderTimer = null;
 
-  const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+  const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg" };
 
   // ---- Feature-detect WebP encoding; disable the button if unsupported ----
   (function detectWebp() {
@@ -344,6 +358,12 @@
   }
 
   function isLossy() { return state.format === "image/jpeg" || state.format === "image/webp"; }
+  function isSvg()   { return state.format === "image/svg+xml"; }
+
+  function syncControls() {
+    qualityField.style.display = isLossy() ? "" : "none";
+    svgField.style.display     = isSvg()   ? "" : "none";
+  }
 
   function loadFile(file) {
     if (!file || !file.type.startsWith("image/")) {
@@ -371,6 +391,7 @@
 
         dropzone.style.display = "none";
         workspace.style.display = "grid";
+        syncControls();
         render();
       };
       img.onerror = () => alert("Sorry — that image couldn't be loaded.");
@@ -383,6 +404,30 @@
   function scheduleRender() {
     clearTimeout(renderTimer);
     renderTimer = setTimeout(render, 180);
+  }
+
+  function showResult(blob, w, h) {
+    if (!blob) { estSize.textContent = "unsupported"; return; }
+    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    state.lastBlob = blob;
+    state.previewUrl = URL.createObjectURL(blob);
+    previewImg.src = state.previewUrl;
+
+    estDims.textContent = w + " × " + h + " px";
+    estSize.textContent = formatBytes(blob.size);
+
+    const diff = blob.size - state.origSize;
+    const pct = state.origSize ? Math.round(Math.abs(diff) / state.origSize * 100) : 0;
+    if (Math.abs(diff) < 1024 * 0.5 || pct === 0) {
+      estDelta.textContent = "about the same";
+      estDelta.className = "";
+    } else if (diff < 0) {
+      estDelta.textContent = "↓ " + pct + "% smaller";
+      estDelta.className = "delta-down";
+    } else {
+      estDelta.textContent = "↑ " + pct + "% larger";
+      estDelta.className = "delta-up";
+    }
   }
 
   function render() {
@@ -403,30 +448,22 @@
     }
     ctx.drawImage(state.img, 0, 0, w, h);
 
-    const q = state.quality;
-    canvas.toBlob((blob) => {
-      if (!blob) { estSize.textContent = "unsupported"; return; }
-      if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
-      state.lastBlob = blob;
-      state.previewUrl = URL.createObjectURL(blob);
-      previewImg.src = state.previewUrl;
-
-      estDims.textContent = w + " × " + h + " px";
-      estSize.textContent = formatBytes(blob.size);
-
-      const diff = blob.size - state.origSize;
-      const pct = state.origSize ? Math.round(Math.abs(diff) / state.origSize * 100) : 0;
-      if (Math.abs(diff) < 1024 * 0.5 || pct === 0) {
-        estDelta.textContent = "about the same";
-        estDelta.className = "";
-      } else if (diff < 0) {
-        estDelta.textContent = "↓ " + pct + "% smaller";
-        estDelta.className = "delta-down";
-      } else {
-        estDelta.textContent = "↑ " + pct + "% larger";
-        estDelta.className = "delta-up";
+    // SVG: trace the rendered pixels into vector paths (transparency preserved).
+    if (isSvg()) {
+      if (!window.ImageTracer) { estSize.textContent = "tracer unavailable"; return; }
+      let svgStr;
+      try {
+        const imgd = ctx.getImageData(0, 0, w, h);
+        svgStr = window.ImageTracer.imagedataToSVG(imgd, { numberofcolors: state.colors });
+      } catch (err) {
+        estSize.textContent = "couldn't trace";
+        return;
       }
-    }, state.format, isLossy() ? q : undefined);
+      showResult(new Blob([svgStr], { type: "image/svg+xml" }), w, h);
+      return;
+    }
+
+    canvas.toBlob((blob) => showResult(blob, w, h), state.format, isLossy() ? state.quality : undefined);
   }
 
   // ---- Drop zone events ----
@@ -460,7 +497,7 @@
     if (!btn || btn.disabled) return;
     [...formatSeg.children].forEach(b => b.setAttribute("aria-pressed", b === btn ? "true" : "false"));
     state.format = btn.dataset.fmt;
-    qualityField.classList.toggle("disabled", !isLossy());
+    syncControls();
     render();
   });
 
@@ -489,6 +526,12 @@
   qualityInput.addEventListener("input", () => {
     state.quality = Number(qualityInput.value) / 100;
     qualityVal.textContent = qualityInput.value + "%";
+    scheduleRender();
+  });
+
+  svgColorsInput.addEventListener("input", () => {
+    state.colors = Number(svgColorsInput.value);
+    svgColorsVal.textContent = svgColorsInput.value;
     scheduleRender();
   });
 

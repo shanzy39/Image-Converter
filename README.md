@@ -6,7 +6,8 @@ A free, client-side web tool to **convert, resize, and compress images** — rig
 
 ## Features
 
-- **Convert between formats** — PNG, JPG, and WebP
+- **Convert between formats** — PNG, JPG, WebP, and **SVG** (vector tracing)
+- **Raster → SVG vectorizing** — trace an image into real vector shapes, with a **detail (colors)** control; great for logos, icons, and line art
 - **Drag & drop or browse** — also accepts GIF, BMP, and SVG as input
 - **Resize** — set a target width/height, with optional **lock aspect ratio**
 - **Quality / compression slider** — dial in file size for JPG &amp; WebP, with a live size estimate
@@ -27,6 +28,7 @@ A free, client-side web tool to **convert, resize, and compress images** — rig
 - **PNG is lossless**, so the quality slider only affects **JPG** and **WebP**.
 - **WebP export** depends on browser support; if your browser can't encode WebP, that option is disabled automatically.
 - Converting a transparent PNG to **JPG** fills the background with white (JPEG has no transparency).
+- **SVG output is vector tracing**, not a pixel-perfect copy. It shines on flat-color graphics (logos, icons, line art) and is not meant for photographs — tracing a photo produces a large, blotchy file. Use the **detail (colors)** slider to balance fidelity against file size, and resize first to control how finely the image is traced.
 
 ## Run locally
 
@@ -49,7 +51,8 @@ open index.html
 ## Built with
 
 - Plain HTML, CSS, and vanilla JavaScript — the native `<canvas>` 2D API and `FileReader`
-- No frameworks, no build tools, no CDNs — a single self-contained HTML file
+- [ImageTracer.js](https://github.com/jankovicsandras/imagetracerjs) by András Jankovics (MIT) — powers raster→SVG vector tracing; vendored locally in [`vendor/`](vendor/) so the tool needs no CDN and runs fully offline
+- No frameworks and no build step — just open the folder
 
 ## Companion projects
 
